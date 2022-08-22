@@ -7,14 +7,6 @@
 // Licensed under the MIT License (MIT).
 //--------------------------------------------------------------------------------------
 
-struct BufType
-{
-    int i;
-    int f;
-#ifdef TEST_DOUBLE
-    double d;
-#endif    
-};
 
 #ifdef USE_STRUCTURED_BUFFERS
 
@@ -26,6 +18,18 @@ struct BufType
     double d;
 #endif    
 };
+
+#else
+struct BufType
+{
+    int i[256];
+    int f;
+#ifdef TEST_DOUBLE
+    double d;
+#endif    
+};
+
+#endif
 
 StructuredBuffer<BufType> Buffer0 : register(t0);
 StructuredBuffer<BufType> Buffer1 : register(t1);
@@ -45,7 +49,7 @@ void CSMain(uint3 DTid : SV_DispatchThreadID)
 }
 
 #else // The following code is for raw buffers
-groupshared int2 sharedData[128];
+groupshared BufType sharedData;
 
 ByteAddressBuffer Buffer0 : register(t0);
 ByteAddressBuffer Buffer1 : register(t1);
@@ -55,7 +59,7 @@ RWByteAddressBuffer BufferOut : register(u0);
 void CSMain(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID)
 {
     if (GTid.x < 128) {
-        sharedData[GTid.x] = int4(2 * DTid.x + 1, 2 * DTid.x + 2, 0, 0);
+        sharedData.i[GTid.x] = DTid.x+1;
     }
     GroupMemoryBarrierWithGroupSync();
 #ifdef TEST_DOUBLE
@@ -77,16 +81,14 @@ void CSMain(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID)
 #else
     int i0 = asint(Buffer0.Load(DTid.x * 8 - 4));
     int i1 = asint(Buffer1.Load(DTid.x * 8 + 4));
-    int f0 = sharedData[GTid.x - 0].y;
-    int f1 = sharedData[GTid.x + 0].w;
-    int f2 = sharedData[GTid.x - 0].z;
-    int f3 = sharedData[GTid.x + 1].x;
+    int f0 = sharedData.i[GTid.x - 1];
+    int f1 = sharedData.i[GTid.x - 0];
     //int f0 = asint(Buffer0.Load(DTid.x * 8));
     //int f1 = asint(Buffer1.Load(DTid.x * 8));
     GroupMemoryBarrierWithGroupSync();
 
-    BufferOut.Store(DTid.x * 8, asuint(i0 + i1));
-    BufferOut.Store(DTid.x * 8 + 4, asuint(f0 + f1 + f2 + f3));
+    BufferOut.Store(DTid.x * 8, asuint(f0));
+    BufferOut.Store(DTid.x * 8 + 4, asuint(f1));
 #endif // TEST_DOUBLE
 }
 
